@@ -2,48 +2,80 @@ package org.firstinspires.ftc.teamcode;
 
 import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
 import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
-import com.qualcomm.robotcore.hardware.DistanceSensor;
-import com.qualcomm.robotcore.hardware.LED;
 
-import org.firstinspires.ftc.robotcore.external.navigation.DistanceUnit;
-
-/** Grizzly LED on normally; Fury LED on while the color sensor sees the ball. */
-@TeleOp(name = "Simple LED Control", group = "TeleOp")
+/**
+ * The only OpMode: bear face on the Prism. All LED logic lives in LedController.
+ *
+ * Normal mode: Grizzly face, Fury face while the ball sensor sees the ball.
+ *
+ * gamepad1 BACK toggles TEST mode (for building the panel):
+ *   A       = layer order test (left half BLUE = faces are correct)
+ *   B       = corner test (TL green, TR blue, BL yellow, BR white)
+ *   X       = row walk (one row at a time, top to bottom)
+ *   Y       = all LEDs off
+ *   DPAD UP = save Grizzly as the power-on face (Artboard 0)
+ */
+@TeleOp(name = "Bear Face LED", group = "TeleOp")
 public class SimpleLedOpMode extends LinearOpMode {
 
-    private LED grizzlyLed;
-    private LED furyLed;
-    private DistanceSensor ballSensor;
-    private boolean ballHeld = false;
+    private boolean testMode = false;
+    private boolean lastBack = false;
 
     @Override
     public void runOpMode() {
-        setLeds();
+        LedController leds = new LedController(telemetry);
+        leds.setLeds(hardwareMap);
+
+        telemetry.addLine("Ready. BACK = toggle test mode.");
+        telemetry.update();
 
         waitForStart();
 
         while (opModeIsActive()) {
-            enableLeds();
+            boolean back = gamepad1.back;
+            if (back && !lastBack) {
+                testMode = !testMode;
+                if (testMode) leds.clear(); else leds.redrawFace();
+            }
+            lastBack = back;
+
+            if (testMode) {
+                runTests(leds);
+            } else {
+                leds.enableLeds();
+            }
             telemetry.update();
         }
     }
 
-    /** Finds both LEDs and the ball sensor in the hardware config. Call once, before waitForStart(). */
-    private void setLeds() {
-        grizzlyLed = hardwareMap.get(LED.class, "grizzly_led");
-        furyLed = hardwareMap.get(LED.class, "fury_led");
-        ballSensor = hardwareMap.get(DistanceSensor.class, "ball_sensor");
-    }
+    /** One pass of the bench-test controls. */
+    private void runTests(LedController leds) {
+        telemetry.addLine("TEST MODE (BACK to exit)");
+        telemetry.addLine("A = layer order | B = corners | X = row walk | Y = off | DPAD UP = save boot face");
 
-    /** Checks the ball sensor: Fury LED on while the ball is held, otherwise Grizzly LED on. */
-    private void enableLeds() {
-        double cm = ballSensor.getDistance(DistanceUnit.CM);
-        ballHeld = cm < (ballHeld ? 6.0 : 4.0);  // caught under 4 cm, released over 6 cm
-
-        grizzlyLed.enable(!ballHeld);
-        furyLed.enable(ballHeld);
-
-        telemetry.addData("Ball distance", "%.1f cm", cm);
-        telemetry.addData("Mood", ballHeld ? "FURY" : "GRIZZLY");
+        if (gamepad1.a) {
+            leds.layerOrderTest();
+            telemetry.addLine("Left half BLUE -> faces are correct as-is");
+            telemetry.addLine("Whole row RED -> reverse the layer numbers in LedController");
+            sleep(400);
+        } else if (gamepad1.b) {
+            leds.cornerTest();
+            telemetry.addLine("Expect: TL green, TR blue, BL yellow, BR white");
+            sleep(400);
+        } else if (gamepad1.x) {
+            for (int r = 0; r < LedController.ROWS && opModeIsActive(); r++) {
+                leds.lightRow(r);
+                telemetry.addData("Lighting row", r + 1);
+                telemetry.update();
+                sleep(700);
+            }
+        } else if (gamepad1.y) {
+            leds.clear();
+            sleep(400);
+        } else if (gamepad1.dpad_up) {
+            leds.saveGrizzlyAsBootFace();
+            telemetry.addLine("Grizzly saved to Artboard 0 and set as boot face.");
+            sleep(400);
+        }
     }
 }
